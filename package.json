@@ -1,0 +1,14 @@
+{
+  "name": "viral-hook-generator-paydunya-backend",
+  "version": "1.0.0",
+  "description": "Backend de paiement PayDunya pour Viral Hook Generator",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "node-fetch": "^2.7.0"
+  }
+}
