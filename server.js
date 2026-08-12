@@ -68,6 +68,18 @@ function writeDB(data) {
   fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
 }
 
+// Inscriptions (comptes) — stockées uniquement côté serveur, jamais dans le
+// storage partagé de l'artefact, pour que les emails ne soient pas lisibles
+// par n'importe quel visiteur du site depuis son navigateur.
+const SIGNUPS_FILE = path.join(__dirname, 'signups.json');
+function readSignups() {
+  try { return JSON.parse(fs.readFileSync(SIGNUPS_FILE, 'utf8')); }
+  catch (e) { return []; }
+}
+function writeSignups(list) {
+  fs.writeFileSync(SIGNUPS_FILE, JSON.stringify(list, null, 2));
+}
+
 function paydunyaHeaders() {
   return {
     'Content-Type': 'application/json',
@@ -76,6 +88,53 @@ function paydunyaHeaders() {
     'PAYDUNYA-TOKEN': process.env.PAYDUNYA_TOKEN
   };
 }
+
+// ---------- 0) Inscription ----------
+// Le site appelle cette route avant de laisser quelqu'un utiliser l'outil.
+app.post('/api/register', (req, res) => {
+  const { name, email, customerId } = req.body || {};
+  const cleanEmail = (email || '').trim().toLowerCase();
+  const cleanName = (name || '').trim();
+
+  if (!cleanName || !cleanEmail || !cleanEmail.includes('@')) {
+    return res.status(400).json({ error: 'Nom et email valides requis' });
+  }
+
+  const signups = readSignups();
+  const existing = signups.find(s => s.email === cleanEmail);
+  if (existing) {
+    existing.lastSeenAt = Date.now();
+    if (customerId) existing.customerId = customerId;
+    writeSignups(signups);
+    return res.json({ ok: true, alreadyRegistered: true, count: signups.length });
+  }
+
+  signups.push({
+    name: cleanName,
+    email: cleanEmail,
+    customerId: customerId || null,
+    registeredAt: Date.now()
+  });
+  writeSignups(signups);
+  res.json({ ok: true, alreadyRegistered: false, count: signups.length });
+});
+
+// Compteur public — safe à afficher à tout le monde, ne révèle aucune
+// donnée personnelle, juste un nombre.
+app.get('/api/signup-count', (req, res) => {
+  res.json({ count: readSignups().length });
+});
+
+// Liste privée — protégée par une clé simple (ADMIN_KEY dans les variables
+// d'environnement). Toi seul, qui connais cette clé, peux voir les noms et
+// emails. N'importe qui d'autre obtient une erreur 401.
+app.get('/api/admin/signups', (req, res) => {
+  const key = req.query.key;
+  if (!process.env.ADMIN_KEY || key !== process.env.ADMIN_KEY) {
+    return res.status(401).json({ error: 'Non autorisé' });
+  }
+  res.json({ signups: readSignups() });
+});
 
 // ---------- 1) Créer une facture PayDunya ----------
 // Le site appelle cette route quand l'utilisateur choisit une offre.
@@ -112,7 +171,8 @@ app.post('/api/create-invoice', async (req, res) => {
     const data = await r.json();
 
     if (data.response_code !== '00') {
-      return res.status(400).json({ error: data.response_text || 'Erreur PayDunya' });
+      console.error('PayDunya a refusé la création de facture:', JSON.stringify(data));
+      return res.status(400).json({ error: data.response_text || 'Erreur PayDunya (code ' + data.response_code + ')' });
     }
 
     const db = readDB();
@@ -188,3 +248,4 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Backend PayDunya en écoute sur le port ${PORT} (mode: ${process.env.PAYDUNYA_MODE || 'test'})`);
 });
+      
