@@ -1789,7 +1789,7 @@ Génère exactement 5 hooks (accroches) viraux, différents les uns des autres d
       requireAccount();
       return;
     }
-    if(!isUnlocked() && trialUsed >= FREE_TRIAL_GENERATIONS){
+    if(PAYMENTS_ENABLED && !isUnlocked() && trialUsed >= FREE_TRIAL_GENERATIONS){
       openPaywall('hooks');
       return;
     }
@@ -1895,7 +1895,7 @@ Rédige un script complet de vidéo en français, prêt à être tourné, struct
       requireAccount();
       return;
     }
-    if(!isUnlocked()){
+    if(PAYMENTS_ENABLED && !isUnlocked()){
       openPaywall('script');
       return;
     }
@@ -2070,6 +2070,8 @@ Rédige un script complet de vidéo en français, prêt à être tourné, struct
       const until = new Date(unlockState.until);
       const dateStr = until.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
       accessStatusText.textContent = 'Accès ' + (PLAN_LABELS[unlockState.plan] || unlockState.plan) + ' · jusqu\'au ' + dateStr;
+    } else if(!PAYMENTS_ENABLED){
+      accessStatusText.textContent = 'Accès illimité (bêta gratuite)';
     } else {
       const remaining = Math.max(0, FREE_TRIAL_GENERATIONS - trialUsed);
       accessStatusText.textContent = remaining > 0
