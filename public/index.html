@@ -1654,21 +1654,18 @@ Génère exactement 5 hooks (accroches) viraux, différents les uns des autres d
   }
 
   async function callClaude(userPrompt){
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
+    const response = await fetch(API_BASE + "/api/claude-generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "claude-sonnet-4-6",
-        max_tokens: 1000,
         system: "Tu es un copywriter expert en hooks viraux pour les réseaux sociaux francophones. Tu réponds UNIQUEMENT avec un objet JSON valide, sans aucun texte avant ou après, sans balises markdown, au format exact : {\"hooks\": [\"hook 1\", \"hook 2\", \"hook 3\", \"hook 4\", \"hook 5\"]}",
-        messages: [{ role: "user", content: userPrompt }]
+        prompt: userPrompt,
+        maxTokens: 1000
       })
     });
-    if(!response.ok){ throw new Error('Réponse API invalide (' + response.status + ')'); }
     const data = await response.json();
-    const textBlock = (data.content || []).find(b => b.type === 'text');
-    if(!textBlock || !textBlock.text){ throw new Error('Aucun contenu retourné'); }
-    let clean = textBlock.text.trim().replace(/^```json/i, '').replace(/^```/, '').replace(/```$/, '').trim();
+    if(!response.ok){ throw new Error(data.error || ('Réponse API invalide (' + response.status + ')')); }
+    let clean = (data.text || '').trim().replace(/^```json/i, '').replace(/^```/, '').replace(/```$/, '').trim();
     const parsed = JSON.parse(clean);
     if(!parsed.hooks || !Array.isArray(parsed.hooks) || parsed.hooks.length === 0){
       throw new Error('Format de réponse inattendu');
@@ -1835,21 +1832,18 @@ Rédige un script complet de vidéo en français, prêt à être tourné, struct
   }
 
   async function callClaudeJSON(systemPrompt, userPrompt){
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
+    const response = await fetch(API_BASE + "/api/claude-generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "claude-sonnet-4-6",
-        max_tokens: 1400,
         system: systemPrompt,
-        messages: [{ role: "user", content: userPrompt }]
+        prompt: userPrompt,
+        maxTokens: 1400
       })
     });
-    if(!response.ok){ throw new Error('Réponse API invalide (' + response.status + ')'); }
     const data = await response.json();
-    const textBlock = (data.content || []).find(b => b.type === 'text');
-    if(!textBlock || !textBlock.text){ throw new Error('Aucun contenu retourné'); }
-    let clean = textBlock.text.trim().replace(/^```json/i, '').replace(/^```/, '').replace(/```$/, '').trim();
+    if(!response.ok){ throw new Error(data.error || ('Réponse API invalide (' + response.status + ')')); }
+    let clean = (data.text || '').trim().replace(/^```json/i, '').replace(/^```/, '').replace(/```$/, '').trim();
     return JSON.parse(clean);
   }
 
