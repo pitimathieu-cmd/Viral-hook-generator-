@@ -92,31 +92,36 @@ function paydunyaHeaders() {
 // ---------- 0) Inscription ----------
 // Le site appelle cette route avant de laisser quelqu'un utiliser l'outil.
 app.post('/api/register', (req, res) => {
-  const { name, email, customerId } = req.body || {};
-  const cleanEmail = (email || '').trim().toLowerCase();
-  const cleanName = (name || '').trim();
+  try {
+    const { name, email, customerId } = req.body || {};
+    const cleanEmail = (email || '').trim().toLowerCase();
+    const cleanName = (name || '').trim();
 
-  if (!cleanName || !cleanEmail || !cleanEmail.includes('@')) {
-    return res.status(400).json({ error: 'Nom et email valides requis' });
-  }
+    if (!cleanName || !cleanEmail || !cleanEmail.includes('@')) {
+      return res.status(400).json({ error: 'Nom et email valides requis' });
+    }
 
-  const signups = readSignups();
-  const existing = signups.find(s => s.email === cleanEmail);
-  if (existing) {
-    existing.lastSeenAt = Date.now();
-    if (customerId) existing.customerId = customerId;
+    const signups = readSignups();
+    const existing = signups.find(s => s.email === cleanEmail);
+    if (existing) {
+      existing.lastSeenAt = Date.now();
+      if (customerId) existing.customerId = customerId;
+      writeSignups(signups);
+      return res.json({ ok: true, alreadyRegistered: true, count: signups.length });
+    }
+
+    signups.push({
+      name: cleanName,
+      email: cleanEmail,
+      customerId: customerId || null,
+      registeredAt: Date.now()
+    });
     writeSignups(signups);
-    return res.json({ ok: true, alreadyRegistered: true, count: signups.length });
+    res.json({ ok: true, alreadyRegistered: false, count: signups.length });
+  } catch (err) {
+    console.error('register error:', err);
+    res.status(500).json({ error: 'Erreur serveur lors de l\'inscription' });
   }
-
-  signups.push({
-    name: cleanName,
-    email: cleanEmail,
-    customerId: customerId || null,
-    registeredAt: Date.now()
-  });
-  writeSignups(signups);
-  res.json({ ok: true, alreadyRegistered: false, count: signups.length });
 });
 
 // Compteur public — safe à afficher à tout le monde, ne révèle aucune
@@ -242,10 +247,52 @@ app.get('/api/check-access', (req, res) => {
   res.json({ unlocked: false });
 });
 
+// ---------- Génération IA (hooks + scripts) ----------
+// Le site n'appelle JAMAIS l'API de génération directement : ça exposerait
+// une clé API dans le navigateur. Il passe par cette route, qui détient
+// la clé côté serveur uniquement.
+// Utilise Google Gemini (gratuit, sans carte bancaire) plutôt qu'Anthropic.
+app.post('/api/claude-generate', async (req, res) => {
+  const { system, prompt, maxTokens } = req.body || {};
+  if (!prompt) return res.status(400).json({ error: 'prompt manquant' });
+  if (!process.env.GEMINI_API_KEY) {
+    console.error('claude-generate: GEMINI_API_KEY absente. Variables présentes:', Object.keys(process.env).filter(k => k.includes('GEMINI') || k.includes('API')));
+    return res.status(500).json({ error: "Clé API Gemini manquante côté serveur (GEMINI_API_KEY)." });
+  }
+
+  try {
+    const r = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          systemInstruction: system ? { parts: [{ text: system }] } : undefined,
+          generationConfig: { maxOutputTokens: maxTokens || 1000 }
+        })
+      }
+    );
+    const data = await r.json();
+    if (!r.ok) {
+      console.error('claude-generate error:', JSON.stringify(data));
+      return res.status(r.status).json({ error: data.error?.message || 'Erreur API Gemini' });
+    }
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) {
+      console.error('claude-generate: réponse inattendue:', JSON.stringify(data));
+      return res.status(500).json({ error: 'Aucun contenu retourné par Gemini' });
+    }
+    res.json({ text });
+  } catch (err) {
+    console.error('claude-generate error:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
 app.get('/health', (req, res) => res.json({ ok: true, mode: process.env.PAYDUNYA_MODE || 'test' }));
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Backend PayDunya en écoute sur le port ${PORT} (mode: ${process.env.PAYDUNYA_MODE || 'test'})`);
 });
-      
